@@ -1,8 +1,8 @@
-# Night Zombies
+# RZombies Reworked
 
 An Oxide/uMod plugin for Rust that spawns scarecrow "zombies" in waves at in-game times you choose, and keeps a small population of persistent zombies at monuments.
 
-Drop `NightZombies.cs` into `oxide/plugins`. The [Kits](https://umod.org/plugins/kits) plugin is **optional**. It's only needed if you want custom zombie loadouts.
+By Swishhyy. Drop `RZombiesReworked.cs` into `oxide/plugins`. The [Kits](https://umod.org/plugins/kits) plugin is **optional**. It's only needed if you want custom zombie loadouts.
 
 ## Features
 * **Multiple spawn waves.** Each wave has its own in-game spawn and despawn time, population, health, name, kits, spawn chance and "days between spawns". Windows can cross midnight (`19.8 -> 7.3`) or fall within one day (`6.0 -> 8.0`).
@@ -10,15 +10,15 @@ Drop `NightZombies.cs` into `oxide/plugins`. The [Kits](https://umod.org/plugins
 * **Monument zombies.** A persistent group at each matching monument. They respawn if killed and are pulled back if they roam too far.
 * **Gradual spawn and despawn.** Zombies spawn and despawn a few at a time, so the server doesn't hitch.
 * **Water cleanup.** Zombies that stay fully underwater for too long are removed.
-* **Targeting rules.** Zombies can ignore sleepers, human NPCs (e.g. HumanNPC bots), specific prefabs and players with `nightzombies.ignore`.
+* **Targeting rules.** Zombies can ignore sleepers, human NPCs (e.g. HumanNPC bots), specific prefabs and players with `rzombiesreworked.ignore`.
 * **Corpse and loot control.** Corpses show the zombie's name, and you can choose whether corpses and loot are left behind. Zombie backpacks can despawn twice as fast.
 * **Sentry and grenade toggles.** Choose whether outpost sentries shoot zombies and whether zombies throw grenades.
 * **Spawn broadcast.** Optionally post a chat message when a wave spawns.
 * **Never saved.** Zombies aren't written to the save, so a crash or restart never leaves orphaned NPCs.
 
 ## Permissions
-* `nightzombies.admin`: use `forcespawn`, `despawnall` and `nzstatus`.
-* `nightzombies.ignore`: zombies won't target this player, and waves won't spawn around them.
+* `rzombiesreworked.admin`: use `forcespawn`, `despawnall` and `nzstatus`.
+* `rzombiesreworked.ignore`: zombies won't target this player, and waves won't spawn around them.
 
 ## Commands
 All commands work in chat (`/forcespawn`) and in the server/RCON console (`forcespawn`).
@@ -153,10 +153,17 @@ The default monument list leaves out safe zones (Outpost, Bandit Camp) and offsh
 }
 ```
 
-## Upgrading from 5.x
-Your existing config loads as is. On first load the plugin:
+## Upgrading from Night Zombies (5.x)
+This plugin used to be called **Night Zombies**. To switch over:
+1. Remove `NightZombies.cs` from `oxide/plugins` and add `RZombiesReworked.cs`.
+2. Your existing `oxide/config/NightZombies.json` is copied to `RZombiesReworked.json` the first time the plugin loads.
+3. **Permissions have new names.** Grant them again:
+   * `nightzombies.admin` -> `rzombiesreworked.admin`
+   * `nightzombies.ignore` -> `rzombiesreworked.ignore`
+
+On that first load the plugin also:
 * renames the misspelt `Days betewen spawn` key to `Days between spawns` and keeps your value,
 * resets **Monument List** to names that actually match Rust monuments (the old names never matched, so monument zombies were spawning near the map centre),
 * adds the new keys with their defaults.
 
-The day counters move to `oxide/data/NightZombies.json`. You can delete the old `NightZombies-daysSinceSpawn.json`.
+Day counters are now saved in `oxide/data/RZombiesReworked.json`. The old `NightZombies-daysSinceSpawn.json` and `NightZombies.json` files can be deleted.

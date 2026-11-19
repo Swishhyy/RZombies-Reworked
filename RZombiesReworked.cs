@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using Newtonsoft.Json;
 using Oxide.Core;
@@ -13,18 +14,19 @@ using Random = UnityEngine.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("Night Zombies", "0x89A", "6.0.0")]
+    [Info("RZombies Reworked", "Swishhyy", "6.0.0")]
     [Description("Spawns scarecrow zombies at configurable in-game times and keeps persistent zombies at monuments")]
-    public class NightZombies : RustPlugin
+    public class RZombiesReworked : RustPlugin
     {
         #region Fields
 
-        private const string PermAdmin = "nightzombies.admin";
-        private const string PermIgnore = "nightzombies.ignore";
+        private const string PermAdmin = "rzombiesreworked.admin";
+        private const string PermIgnore = "rzombiesreworked.ignore";
 
         private const string ScarecrowPrefab = "assets/prefabs/npc/scarecrow/scarecrow.prefab";
         private const string DeathSound = "assets/prefabs/npc/murderer/sound/death.prefab";
-        private const string DataFileName = "NightZombies";
+        private const string DataFileName = "RZombiesReworked";
+        private const string LegacyName = "NightZombies";
         private const string CurrentConfigVersion = "6.0.0";
 
         private const int GrenadeItemId = 1840822026; // grenade.beancan
@@ -574,7 +576,7 @@ namespace Oxide.Plugins
             public readonly Configuration.SpawnWave Config;
             public int DaysSinceLastSpawn;
 
-            private readonly NightZombies _plugin;
+            private readonly RZombiesReworked _plugin;
             private readonly HashSet<ScarecrowNPC> _zombies = new HashSet<ScarecrowNPC>();
             private readonly WaitForSeconds _spawnDelay = new WaitForSeconds(0.1f);
 
@@ -584,7 +586,7 @@ namespace Oxide.Plugins
             private Coroutine _routine;
             private Timer _forceTimer;
 
-            public SpawnWave(NightZombies plugin, Configuration.SpawnWave config)
+            public SpawnWave(RZombiesReworked plugin, Configuration.SpawnWave config)
             {
                 _plugin = plugin;
                 Config = config;
@@ -772,7 +774,7 @@ namespace Oxide.Plugins
                 public readonly HashSet<ScarecrowNPC> Zombies = new HashSet<ScarecrowNPC>();
             }
 
-            private readonly NightZombies _plugin;
+            private readonly RZombiesReworked _plugin;
             private readonly Configuration.MonumentSettings _config;
             private readonly List<Site> _sites = new List<Site>();
             private readonly Dictionary<ScarecrowNPC, Site> _owners = new Dictionary<ScarecrowNPC, Site>();
@@ -781,7 +783,7 @@ namespace Oxide.Plugins
             private Timer _checkTimer;
             private Coroutine _routine;
 
-            public MonumentSpawner(NightZombies plugin)
+            public MonumentSpawner(RZombiesReworked plugin)
             {
                 _plugin = plugin;
                 _config = plugin._config.Monument;
@@ -960,7 +962,13 @@ namespace Oxide.Plugins
         {
             try
             {
-                return Interface.Oxide.DataFileSystem.ReadObject<Dictionary<string, int>>(DataFileName)
+                // Carry day counters over from the plugin's previous name.
+                string file = !Interface.Oxide.DataFileSystem.ExistsDatafile(DataFileName)
+                              && Interface.Oxide.DataFileSystem.ExistsDatafile(LegacyName)
+                    ? LegacyName
+                    : DataFileName;
+
+                return Interface.Oxide.DataFileSystem.ReadObject<Dictionary<string, int>>(file)
                        ?? new Dictionary<string, int>();
             }
             catch (Exception ex)
@@ -1148,6 +1156,7 @@ namespace Oxide.Plugins
 
         protected override void LoadConfig()
         {
+            ImportLegacyConfig();
             base.LoadConfig();
             try
             {
@@ -1162,6 +1171,24 @@ namespace Oxide.Plugins
             {
                 PrintError($"Config file is invalid, using default values (your file was NOT overwritten): {ex.Message}");
                 LoadDefaultConfig();
+            }
+        }
+
+        // This plugin used to be called Night Zombies. Copy that config over the first time so settings aren't lost.
+        private void ImportLegacyConfig()
+        {
+            try
+            {
+                string legacyPath = Path.Combine(Interface.Oxide.ConfigDirectory, LegacyName + ".json");
+                if (Config.Exists() || !File.Exists(legacyPath))
+                    return;
+
+                File.Copy(legacyPath, Config.Filename);
+                Puts($"Imported settings from {LegacyName}.json - you can delete that file and NightZombies.cs");
+            }
+            catch (Exception ex)
+            {
+                PrintWarning($"Could not import {LegacyName}.json: {ex.Message}");
             }
         }
 
@@ -1223,8 +1250,8 @@ namespace Oxide.Plugins
                 ["ForceSpawned"] = "Forced spawn started for {0}. Zombies will despawn in {1} minutes.",
                 ["UnknownWave"] = "No wave named '{0}'. Waves: {1}",
                 ["DespawnedAll"] = "All zombies have been despawned. Monument zombies will return within {0} seconds.",
-                ["ChatBroadcast"] = "<color=#c0392b>[Night Zombies]</color> {0} zombies have risen ({1})",
-                ["StatusHeader"] = "Night Zombies - time {0}, {1} zombies alive",
+                ["ChatBroadcast"] = "<color=#c0392b>[RZombies]</color> {0} zombies have risen ({1})",
+                ["StatusHeader"] = "RZombies Reworked - time {0}, {1} zombies alive",
                 ["StatusWave"] = "  {0}: {1}, {2}/{3} zombies, window {4}-{5}, days since spawn {6}",
                 ["StatusMonuments"] = "  Monuments: {0} sites, {1} zombies"
             }, this);
