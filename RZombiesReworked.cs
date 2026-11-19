@@ -13,7 +13,7 @@ using Random = UnityEngine.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("RZombies Reworked", "Swishhyy", "1.3.0")]
+    [Info("RZombies Reworked", "Swishhyy", "1.4.0")]
     [Description("Scheduled zombie hordes and monument outbreaks, built on Rust's scarecrow NPC")]
     public class RZombiesReworked : RustPlugin
     {
@@ -25,6 +25,7 @@ namespace Oxide.Plugins
         private const string ScarecrowPath = "assets/prefabs/npc/scarecrow/scarecrow.prefab";
         private const int BeancanItemId = 1840822026;
         private const string GlowEyesShortname = "gloweyes";
+        private const string RedPointLight = "assets/bundled/prefabs/modding/cinematic/cinelights/cinelight_point_red.prefab";
         private static readonly Vector3 HeadLightOffset = new Vector3(0f, 1.6f, 0.2f);
 
         private const float QueueTick = 0.2f;     // spawn/despawn queue
@@ -45,6 +46,7 @@ namespace Oxide.Plugins
             public ZombieProfile Profile;
             public float SecondsUnderwater;
             public BaseEntity HeadLight;
+            public bool HasLight; // rolled once at spawn against the profile's head light chance
         }
 
         private readonly Dictionary<ScarecrowNPC, Zombie> _alive = new Dictionary<ScarecrowNPC, Zombie>();
@@ -526,8 +528,12 @@ namespace Oxide.Plugins
 
             npc.SendNetworkUpdate();
 
-            var zombie = new Zombie { Npc = npc, Group = group, Profile = profile };
-            if (WantsHeadLight(profile))
+            var zombie = new Zombie
+            {
+                Npc = npc, Group = group, Profile = profile,
+                HasLight = !string.IsNullOrEmpty(profile.HeadLightPrefab) && Random.Range(0f, 100f) < profile.HeadLightChance
+            };
+            if (zombie.HasLight && WantsHeadLight(profile))
                 AttachHeadLight(zombie);
             _alive[npc] = zombie;
             group.Members.Add(zombie);
@@ -606,7 +612,7 @@ namespace Oxide.Plugins
         {
             foreach (Zombie zombie in _alive.Values)
             {
-                if (zombie.Npc == null || zombie.Npc.IsDestroyed || string.IsNullOrEmpty(zombie.Profile.HeadLightPrefab))
+                if (zombie.Npc == null || zombie.Npc.IsDestroyed || !zombie.HasLight)
                     continue;
 
                 if (WantsHeadLight(zombie.Profile))
@@ -1193,7 +1199,10 @@ namespace Oxide.Plugins
             public bool GlowingEyes = true;
 
             [JsonProperty("Head light prefab (empty = off, costs client FPS)")]
-            public string HeadLightPrefab = string.Empty;
+            public string HeadLightPrefab = RedPointLight;
+
+            [JsonProperty("Head light chance per zombie (%)")]
+            public float HeadLightChance = 100f;
 
             [JsonProperty("Head light only at night")]
             public bool HeadLightNightOnly = true;
