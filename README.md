@@ -15,6 +15,7 @@ DayZ-style infected for Rust servers running Oxide/uMod, tuned for small servers
 - **Horde nights:** a 35% chance each night of an extra horde rising around players, announced in chat.
 - **Survives reloads:** if the plugin reloads mid-night, a horde that already rose that night comes straight back without re-rolling its chance.
 - **Gentle on the server:** spawns and despawns go through a queue at a configurable rate, with a hard cap on total zombies. Zombies are never written to the save, so a crash never leaves orphaned NPCs.
+- **Glowing eyes:** every zombie wears Rust's Glowing Eyes item by default, so at night you see pairs of eyes in the dark. The eyes are removed when a zombie dies, so they can't be looted. There's also an optional, experimental head light per profile for a much stronger glow (see Notes).
 - **Targeting rules:** leave sleepers alone, ignore HumanNPC-style bots, never target listed prefabs, and never target players with the immune permission.
 - **Corpse control:** corpses carry the zombie's name and can be removed or have their loot turned off. Zombie backpack lifetime can be scaled.
 - **Cleanup:** zombies stuck underwater are removed.
@@ -46,7 +47,10 @@ Works in chat (`/rz ...`) and in the server or RCON console (`rz ...`).
       "Damage multiplier": 1.0,
       "Can throw grenades": true,
       "Kits (one picked at random, needs the Kits plugin)": [],
-      "Kit replaces default gear": false
+      "Kit replaces default gear": false,
+      "Glowing eyes (wear the Glowing Eyes item)": true,
+      "Head light prefab (empty = off, costs client FPS)": "",
+      "Head light only at night": true
     },
     "brute": {
       "Name shown": "Brute",
@@ -54,7 +58,10 @@ Works in chat (`/rz ...`) and in the server or RCON console (`rz ...`).
       "Damage multiplier": 1.25,
       "Can throw grenades": false,
       "Kits (one picked at random, needs the Kits plugin)": [],
-      "Kit replaces default gear": false
+      "Kit replaces default gear": false,
+      "Glowing eyes (wear the Glowing Eyes item)": true,
+      "Head light prefab (empty = off, costs client FPS)": "",
+      "Head light only at night": true
     }
   },
   "Roaming zombies (per player)": {
@@ -131,6 +138,8 @@ Works in chat (`/rz ...`) and in the server or RCON console (`rz ...`).
 ```
 
 ### Notes
+- **Eye glow:** the scarecrow's built-in eye glow is drawn on each player's computer, so no server plugin can make it brighter. This plugin adds the Glowing Eyes wearable on top. If a kit gives zombies a full-face mask that blocks the eyes slot, the console will say so once.
+- **Head light (experimental):** set "Head light prefab" to a small light entity and it's attached to each zombie's head. It's on only at night by default. Every light costs FPS on players' computers, so try it on one profile with modest numbers first. Use a prefab path you've confirmed spawns with the `spawn` console command (Rust's cinematic point lights are a good place to start). A bad path is reported once in the console.
 - **Tuning density:** for more zombies around you, raise the two "Zombies around each player" values first. That's the main lever and it scales with player count. With 5 players at night the default is roughly 100 roaming zombies, plus any active monuments, plus a horde on horde nights. Keep "Max zombies on the server" above that total.
 - **Nights to skip between rises:** `0` means every night, `1` every other night, and so on.
 - **Placement fallback:** NearPlayers falls back to Anywhere when not enough players are online or no spot near a player is found.
