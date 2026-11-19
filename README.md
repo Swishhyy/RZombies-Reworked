@@ -1,59 +1,79 @@
-## Configuration
-WARNING: Requires Rustkits to function
-### Spawn Settings
-* **Spawn near players** - Do zombies spawn near players (randomly chosen). If false, zombies will spawn randomly around the map.
-* **Min pop for near player spawn** - The minimum number of players on the server required for zombies to spawn near players.
-* **Min distance from player** - When spawning near players, this is the minimum distance that zombies are allowed to spawn from the player.
-* **Max distance from player** - When spawning near players, this is the maximum distance that zombies are allowed to spawn from the player.
-* **Spawn Time** - The in-game time at which zombies will appear.
-* **Destroy Time** - The in-game time at which zombies will disappear.
+# Night Zombies
 
-### Spawn Waves
-* **Wave Name** - A unique name for the spawn wave.
-* **Spawn Time** - The in-game time at which this wave of zombies will appear.
-* **Destroy Time** - The in-game time at which zombies in this wave will be despawned.
-* **Spawn near players** - Determines whether zombies in this wave will spawn near players (if true) or randomly around the map.
-* **Min pop for near player spawn** - The minimum number of players on the server required for a near-player spawn.
-* **Min distance from player** - The minimum allowed distance for zombies to spawn from a player.
-* **Max distance from player** - The maximum allowed distance for zombies to spawn from a player.
+An Oxide/uMod plugin for Rust that spawns scarecrow "zombies" in waves at in-game times you choose, and keeps a small population of persistent zombies at monuments.
 
-### Wave-Specific Settings
-* **Zombie Settings**
-  * **Display Name** – The name shown for zombies in this wave.
-  * **Scarecrow Population (total amount)** – The total number of zombies to spawn in this wave.
-  * **Scarecrow Health** – The health value for each zombie in this wave.
-  * **Scarecrow Kits** – A list of kits to assign to zombies (if applicable).
-* **Chance Settings**
-  * **Chance per cycle** – The percentage chance that zombies in this wave will spawn during each spawn attempt.
-  * **Days between spawn** – The number of days between spawn attempts (if you want to throttle spawning over time).
+Drop `NightZombies.cs` into `oxide/plugins`. The [Kits](https://umod.org/plugins/kits) plugin is **optional**. It's only needed if you want custom zombie loadouts.
 
-### Monument Settings
-* **Monument Zombie Population** – The number of persistent zombies to maintain at each monument.
-* **Monument List** – A list of monuments where persistent zombies will be present.
-* **Zombie Settings** – Settings for persistent zombies. These settings are similar to the regular scarecrow settings (Display Name, Health, Kits) but do not include the "spawn near players" option. These zombies are always present at the monuments and respawn if killed.
-
-### Destroy Settings
-* **Leave Corpse, when destroyed** - Whether corpses remain when zombies naturally despawn (can affect performance when set to true).
-* **Leave Corpse, when killed by player** - Whether corpses remain when zombies are killed by players.
-* **Half body bag despawn time** - Whether the despawn time for green loot backpacks is halved.
-* **Quick destroy corpses** - Whether corpses are cleaned up after 10 seconds.
+## Features
+* **Multiple spawn waves.** Each wave has its own in-game spawn and despawn time, population, health, name, kits, spawn chance and "days between spawns". Windows can cross midnight (`19.8 -> 7.3`) or fall within one day (`6.0 -> 8.0`).
+* **Spawn near players or across the map.** Near-player spawns pick a random eligible player (not dead, sleeping, flying, in a safe zone, vanished or ignored) and place zombies in a ring between the min and max distance.
+* **Monument zombies.** A persistent group at each matching monument. They respawn if killed and are pulled back if they roam too far.
+* **Gradual spawn and despawn.** Zombies spawn and despawn a few at a time, so the server doesn't hitch.
+* **Water cleanup.** Zombies that stay fully underwater for too long are removed.
+* **Targeting rules.** Zombies can ignore sleepers, human NPCs (e.g. HumanNPC bots), specific prefabs and players with `nightzombies.ignore`.
+* **Corpse and loot control.** Corpses show the zombie's name, and you can choose whether corpses and loot are left behind. Zombie backpacks can despawn twice as fast.
+* **Sentry and grenade toggles.** Choose whether outpost sentries shoot zombies and whether zombies throw grenades.
+* **Spawn broadcast.** Optionally post a chat message when a wave spawns.
+* **Never saved.** Zombies aren't written to the save, so a crash or restart never leaves orphaned NPCs.
 
 ## Permissions
-* **nightzombies.admin**: Allows users to execute the `/forcespawn` or `/despawnall` chat commands.
-* **nightzombies.ignore**: Scarecrows will not attack players with this permission.
+* `nightzombies.admin`: use `forcespawn`, `despawnall` and `nzstatus`.
+* `nightzombies.ignore`: zombies won't target this player, and waves won't spawn around them.
 
-## Chat Commands
-* **/forcespawn**: Forces an immediate zombie spawn across all spawn waves.
-* **/despawnall**: Immediately despawns all zombies (and their corpses) across all spawn waves and monuments. Requires the `nightzombies.admin` permission.
+## Commands
+All commands work in chat (`/forcespawn`) and in the server/RCON console (`forcespawn`).
+
+* `forcespawn [wave name]`: spawns every wave, or just the named one, right now. Forced zombies despawn after 10 minutes unless that wave's normal window starts in the meantime.
+* `despawnall`: removes every zombie right away. Monument zombies come back on the next respawn check.
+* `nzstatus`: shows the in-game time, each wave's state and zombie count, days since it last spawned, and monument totals.
+
+## Configuration
+
+### Spawn Waves (one entry per wave)
+| Key | Description |
+|---|---|
+| Wave Name | Unique name. Used by `forcespawn <name>` and for saving the day counter. |
+| Spawn Time / Destroy Time | In-game hours (0–24) when the wave appears and disappears. |
+| Spawn near players | `true`: spawn around a random player. `false`: random map positions. |
+| Min pop for near player spawn | Online players needed before near-player spawning is used. |
+| Min / Max distance from player | Ring around the player that zombies spawn in. |
+| Respawn killed zombies while wave is active | Replace zombies that are killed so the population stays full. |
+| Zombie Settings | `Display Name`, `Scarecrow Health`, `Scarecrow Kits` (a random one is picked), `Scarecrow Population (total amount)`. |
+| Chance Settings | `Chance per cycle`: rolled **once** each time the window opens. `Days between spawns`: `0` = every night, `1` = every other night, and so on. |
+
+### Monument Settings
+| Key | Description |
+|---|---|
+| Monument Zombie Population | Zombies kept at **each** matching monument. `0` turns this off. |
+| Spawn radius around monument | How far from the monument centre zombies can spawn. |
+| Max roam distance before respawning at monument | Zombies further away than this get respawned at their monument. `0` = off. |
+| Respawn check interval (seconds) | How often dead or stray monument zombies are replaced. |
+| Monument List | Words matched against monument prefab names. Case, spaces, underscores and numbers are ignored, so `military_tunnel` matches `military_tunnel_1.prefab`. |
+| Zombie Settings | `Display Name`, `Scarecrow Health`, `Scarecrow Kits`. |
+
+The default monument list leaves out safe zones (Outpost, Bandit Camp) and offshore monuments (oil rigs).
+
+### Destroy Settings
+* **Leave Corpse, when destroyed**: leave a corpse when a wave ends and its zombies are despawned.
+* **Leave Corpse, when killed by player**: leave a corpse when a zombie is killed.
+* **Spawn Loot**: whether zombie corpses get loot.
+* **Half bodybag despawn time**: zombie backpacks despawn twice as fast.
 
 ### Behaviour Settings
-* **Zombies attacked by outpost sentries** - Whether zombies are attacked by sentries at safezones.
-* **Ignore Human NPCs** - Whether zombies ignore NPC player characters.
-* **Ignored entities (full entity shortname)** - A list of entity prefab names that zombies will never target (must be the full short prefab name).
+* **Attack sleeping players**
+* **Zombies attacked by outpost sentries**
+* **Throw Grenades**
+* **Ignore Human NPCs**: ignore non-Steam BasePlayers such as HumanNPC bots (scientists are still attacked).
+* **Despawn after fully submerged for (seconds, 0 = off)**, and **Water depth counted as fully submerged**
+* **Ignored entities (full entity shortname)**: e.g. `scarecrow`, `scientistjunkpile`. A `.prefab` suffix is optional.
 
-### Example JSON Configuration
+### Broadcast Settings
+* **Broadcast spawn amount**: post a chat message when a wave spawns.
+
+### Example
 ```json
 {
+  "Config Version": "6.0.0",
   "Spawn Waves": [
     {
       "Wave Name": "Night Wave",
@@ -63,15 +83,16 @@ WARNING: Requires Rustkits to function
       "Min pop for near player spawn": 10,
       "Min distance from player": 30.0,
       "Max distance from player": 60.0,
+      "Respawn killed zombies while wave is active": true,
       "Zombie Settings": {
         "Display Name": "Scarecrow",
-        "Scarecrow Population (total amount)": 50,
         "Scarecrow Health": 200.0,
-        "Scarecrow Kits": [ "defaultkit" ]
+        "Scarecrow Kits": [],
+        "Scarecrow Population (total amount)": 50
       },
       "Chance Settings": {
         "Chance per cycle": 100.0,
-        "Days betewen spawn": 0
+        "Days between spawns": 0
       }
     },
     {
@@ -82,51 +103,33 @@ WARNING: Requires Rustkits to function
       "Min pop for near player spawn": 0,
       "Min distance from player": 40.0,
       "Max distance from player": 80.0,
+      "Respawn killed zombies while wave is active": false,
       "Zombie Settings": {
         "Display Name": "Dawn Scarecrow",
-        "Scarecrow Population (total amount)": 30,
         "Scarecrow Health": 150.0,
-        "Scarecrow Kits": [ "dawnkit" ]
+        "Scarecrow Kits": [ "dawnkit" ],
+        "Scarecrow Population (total amount)": 30
       },
       "Chance Settings": {
         "Chance per cycle": 50.0,
-        "Days betewen spawn": 1
-      }
-    },
-    {
-      "Wave Name": "Midnight Wave",
-      "Spawn Time": 0.0,
-      "Destroy Time": 1.0,
-      "Spawn near players": true,
-      "Min pop for near player spawn": 5,
-      "Min distance from player": 20.0,
-      "Max distance from player": 50.0,
-      "Zombie Settings": {
-        "Display Name": "Midnight Scarecrow",
-        "Scarecrow Population (total amount)": 40,
-        "Scarecrow Health": 180.0,
-        "Scarecrow Kits": [ "midnightkit" ]
-      },
-      "Chance Settings": {
-        "Chance per cycle": 75.0,
-        "Days betewen spawn": 0
+        "Days between spawns": 1
       }
     }
   ],
   "Monument Settings": {
     "Monument Zombie Population": 3,
+    "Spawn radius around monument": 40.0,
+    "Max roam distance before respawning at monument (0 = off)": 150.0,
+    "Respawn check interval (seconds)": 60.0,
     "Monument List": [
-      "airfield", "lighthouse", "powerplant", "trainyard", "militarytunnels",
-      "satellitedish", "compound", "oilrig", "submarine", "junkyard",
-      "quarry", "banditcamp", "harbor", "water treatment", "warehouse",
-      "launchsite", "radardome", "mineshaft", "factory", "boathouse",
-      "smokestack", "researchstation", "silobase", "crashsite", "container",
-      "dockyard", "garage", "warehouse2", "blockade"
+      "airfield", "powerplant", "trainyard", "military_tunnel", "water_treatment",
+      "launch_site", "junkyard", "satellite_dish", "sphere_tank", "harbor",
+      "radtown", "excavator", "gas_station", "supermarket", "warehouse"
     ],
     "Zombie Settings": {
       "Display Name": "Monument Zombie",
       "Scarecrow Health": 300.0,
-      "Scarecrow Kits": [ "monumentkit" ]
+      "Scarecrow Kits": []
     }
   },
   "Destroy Settings": {
@@ -140,10 +143,9 @@ WARNING: Requires Rustkits to function
     "Zombies attacked by outpost sentries": true,
     "Throw Grenades": true,
     "Ignore Human NPCs": true,
-    "Ignored entities (full entity shortname)": [
-      "scientistjunkpile.prefab",
-      "scarecrow.prefab"
-    ]
+    "Despawn after fully submerged for (seconds, 0 = off)": 10.0,
+    "Water depth counted as fully submerged": 1.8,
+    "Ignored entities (full entity shortname)": [ "scientistjunkpile", "scarecrow" ]
   },
   "Broadcast Settings": {
     "Broadcast spawn amount": false
@@ -151,11 +153,10 @@ WARNING: Requires Rustkits to function
 }
 ```
 
-## Notes
-* **Monument Zombies**: Persistent zombies (Monument Zombies) are configured under the Monument Settings section. They always exist at specified monuments and will respawn if killed.
-* **Automatic Despawning in Water**: Zombies that are fully submerged (their head is below water level) for 10 consecutive seconds will automatically despawn.
+## Upgrading from 5.x
+Your existing config loads as is. On first load the plugin:
+* renames the misspelt `Days betewen spawn` key to `Days between spawns` and keeps your value,
+* resets **Monument List** to names that actually match Rust monuments (the old names never matched, so monument zombies were spawning near the map centre),
+* adds the new keys with their defaults.
 
-## Version Compatibility
-These features are part of version 4.1.1. Previous versions (v0.9.0 and v2.0) are still available:
-* [v0.9.0 Documentation](https://github.com/0x89A/Night-Zombies/tree/deprecated-v0.9.0)
-* [v2.0 Documentation](https://github.com/0x89A/Night-Zombies/tree/deprecated-v2.0)
+The day counters move to `oxide/data/NightZombies.json`. You can delete the old `NightZombies-daysSinceSpawn.json`.
