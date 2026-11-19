@@ -1,16 +1,18 @@
 # RZombies Reworked
 
-Zombie hordes for Rust servers running Oxide/uMod. Hordes rise at night on a schedule you control, and outbreaks keep a few tougher zombies at monuments around the clock. The zombies are Rust's scarecrow NPC.
+DayZ-style infected for Rust servers running Oxide/uMod, tuned for small servers (1–5 players). Every player always has zombies nearby, and more come out at night. Monuments fill up when someone gets close, and the occasional night brings a horde on top. The zombies are Rust's scarecrow NPC.
 
 **Install:** drop `RZombiesReworked.cs` into `oxide/plugins`. The config is created at `oxide/config/RZombiesReworked.json`.
 
 **Optional plugins:** [Kits](https://umod.org/plugins/kits) for custom loadouts and [Vanish](https://umod.org/plugins/vanish), so vanished admins never get a horde spawned on them.
 
 ## Features
+- **Roaming zombies per player (the DayZ part):** each online player gets their own group of zombies (10 by day, 20 at night by default). They spawn 40–100 m away, out of sight, and get recycled once the player moves on, so you keep running into them wherever you go. The total grows with how many people are online, and a killed zombie is replaced after 30 s.
 - **Zombie profiles:** reusable zombie types (name, health, damage multiplier, grenades on or off, kits). Hordes and outbreaks just name the profile they use.
 - **Scheduled hordes:** each horde has its own in-game rise and leave hours (windows can cross midnight), a chance to rise each night, a number of nights to skip between rises, a zombie count, and optional replacement of killed zombies after a delay.
 - **Two placement modes:** around a random eligible player, or anywhere on the map. Spawns avoid water, rocks, objects and (by default) anything within 15 m of a base.
-- **Monument outbreaks:** a few zombies at every matching monument. Killed ones come back after a delay, and any that wander past the leash distance are replaced.
+- **Monument outbreaks:** monuments fill up with zombies (12 each by default) only while a player is within 300 m, and empty out 90 s after everyone leaves. Nothing runs at monuments nobody is visiting. Killed zombies come back after a delay, and any that wander past the leash distance are replaced.
+- **Horde nights:** a 35% chance each night of an extra horde rising around players, announced in chat.
 - **Survives reloads:** if the plugin reloads mid-night, a horde that already rose that night comes straight back without re-rolling its chance.
 - **Gentle on the server:** spawns and despawns go through a queue at a configurable rate, with a hard cap on total zombies. Zombies are never written to the save, so a crash never leaves orphaned NPCs.
 - **Targeting rules:** leave sleepers alone, ignore HumanNPC-style bots, never target listed prefabs, and never target players with the immune permission.
@@ -55,6 +57,18 @@ Works in chat (`/rz ...`) and in the server or RCON console (`rz ...`).
       "Kit replaces default gear": false
     }
   },
+  "Roaming zombies (per player)": {
+    "Enabled": true,
+    "Profile": "walker",
+    "Zombies around each player (day)": 10,
+    "Zombies around each player (night)": 20,
+    "Night starts (hour 0-24)": 19.5,
+    "Night ends (hour 0-24)": 6.5,
+    "Min spawn distance from player": 40.0,
+    "Max spawn distance from player": 100.0,
+    "Recycle zombies further than this from their player": 160.0,
+    "Respawn delay after kill (seconds)": 30.0
+  },
   "Hordes": [
     {
       "Name": "Nightfall",
@@ -62,9 +76,9 @@ Works in chat (`/rz ...`) and in the server or RCON console (`rz ...`).
       "Profile": "walker",
       "Rises at (hour 0-24)": 20.0,
       "Leaves at (hour 0-24)": 6.5,
-      "Chance to rise each night (%)": 100.0,
+      "Chance to rise each night (%)": 35.0,
       "Nights to skip between rises": 0,
-      "Zombie count": 120,
+      "Zombie count": 40,
       "Replace killed zombies": true,
       "Replacement delay (seconds)": 10.0,
       "Placement (NearPlayers or Anywhere)": "NearPlayers",
@@ -76,8 +90,10 @@ Works in chat (`/rz ...`) and in the server or RCON console (`rz ...`).
   "Monument outbreaks": {
     "Enabled": true,
     "Profile": "brute",
-    "Zombies per monument": 6,
-    "Spawn radius": 35.0,
+    "Zombies per monument": 12,
+    "Spawn radius": 45.0,
+    "Only active when a player is within (0 = always)": 300.0,
+    "Empty out after nobody is near for (seconds)": 90.0,
     "Leash distance (0 = off)": 120.0,
     "Respawn delay after kill (seconds)": 90.0,
     "Monuments (prefab name contains)": [
@@ -102,8 +118,8 @@ Works in chat (`/rz ...`) and in the server or RCON console (`rz ...`).
     "Water depth that counts as underwater": 1.6
   },
   "Performance": {
-    "Spawns per second": 15.0,
-    "Max zombies on the server": 600,
+    "Spawns per second": 10.0,
+    "Max zombies on the server": 300,
     "Keep spawns this far from bases (0 = off)": 15.0
   },
   "Chat": {
@@ -115,6 +131,7 @@ Works in chat (`/rz ...`) and in the server or RCON console (`rz ...`).
 ```
 
 ### Notes
+- **Tuning density:** for more zombies around you, raise the two "Zombies around each player" values first. That's the main lever and it scales with player count. With 5 players at night the default is roughly 100 roaming zombies, plus any active monuments, plus a horde on horde nights. Keep "Max zombies on the server" above that total.
 - **Nights to skip between rises:** `0` means every night, `1` every other night, and so on.
 - **Placement fallback:** NearPlayers falls back to Anywhere when not enough players are online or no spot near a player is found.
 - **Monument matching:** each monument's prefab file name is checked for any of the words in the list, e.g. `military_tunnel` matches `military_tunnel_1.prefab`. Safe zones (Outpost, Bandit Camp) and oil rigs are left out of the default list on purpose.

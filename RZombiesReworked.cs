@@ -13,7 +13,7 @@ using Random = UnityEngine.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("RZombies Reworked", "Swishhyy", "1.1.0")]
+    [Info("RZombies Reworked", "Swishhyy", "1.2.0")]
     [Description("Scheduled zombie hordes and monument outbreaks, built on Rust's scarecrow NPC")]
     public class RZombiesReworked : RustPlugin
     {
@@ -50,6 +50,9 @@ namespace Oxide.Plugins
         private readonly Queue<ScarecrowNPC> _despawnQueue = new Queue<ScarecrowNPC>();
         private readonly List<Horde> _hordes = new List<Horde>();
         private readonly List<OutbreakSite> _sites = new List<OutbreakSite>();
+        private readonly Dictionary<ulong, AmbientGroup> _ambient = new Dictionary<ulong, AmbientGroup>();
+        private ZombieProfile _ambientProfile;
+        private bool _isNight;
         private readonly HashSet<string> _neverTarget = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _kitWarnings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -101,6 +104,9 @@ namespace Oxide.Plugins
 
                 _hordes.Add(new Horde(this, hordeCfg, ResolveProfile(hordeCfg.Profile), state));
             }
+
+            if (_cfg.Ambient.Enabled)
+                _ambientProfile = ResolveProfile(_cfg.Ambient.Profile);
 
             if (_cfg.Outbreaks.Enabled)
                 FindOutbreakSites();
@@ -297,10 +303,12 @@ namespace Oxide.Plugins
         {
             public readonly string Name;
             public readonly Vector3 Center;
+            public bool Active { get; private set; }
 
             private readonly RZombiesReworked _plugin;
             private readonly ZombieProfile _profile;
             private float _nextRefill;
+            private float _emptySince = -1f;
 
             public OutbreakSite(RZombiesReworked plugin, string name, Vector3 center, ZombieProfile profile)
             {
@@ -314,12 +322,37 @@ namespace Oxide.Plugins
 
             public override string Label => Name;
             public override ZombieProfile Profile => _profile;
-            public override bool WantsMore => Members.Count < Cfg.PerMonument;
+            public override bool WantsMore => Active && Members.Count < Cfg.PerMonument;
 
-            public void Evaluate()
+            // Monuments only fill up while a player is close, and empty out again once everyone has left.
+            public void Evaluate(List<BasePlayer> players)
             {
-                if (Time.realtimeSinceStartup >= _nextRefill)
-                    _plugin.Enqueue(this, Cfg.PerMonument - Members.Count - Queued);
+                float now = Time.realtimeSinceStartup;
+                float rangeSqr = Cfg.ActivationRange * Cfg.ActivationRange;
+                bool someoneNear = Cfg.ActivationRange <= 0f;
+                for (int i = 0; !someoneNear && i < players.Count; i++)
+                    someoneNear = (players[i].transform.position - Center).sqrMagnitude <= rangeSqr;
+
+                if (someoneNear)
+                {
+                    Active = true;
+                    _emptySince = -1f;
+                    if (now >= _nextRefill)
+                        _plugin.Enqueue(this, Cfg.PerMonument - Members.Count - Queued);
+                    return;
+                }
+
+                if (!Active)
+                    return;
+
+                if (_emptySince < 0f)
+                    _emptySince = now;
+                else if (now - _emptySince >= Cfg.EmptyGrace)
+                {
+                    Active = false;
+                    _emptySince = -1f;
+                    _plugin.RetireAll(this);
+                }
             }
 
             public void Clear()
@@ -330,6 +363,50 @@ namespace Oxide.Plugins
 
             public override bool TryPickSpot(out Vector3 spot) =>
                 _plugin.TryFindSpotAround(Center, 0f, Cfg.SpawnRadius, false, out spot);
+
+            public override void OnLost(Zombie zombie, bool killed)
+            {
+                if (killed)
+                    _nextRefill = Mathf.Max(_nextRefill, Time.realtimeSinceStartup + Cfg.RespawnDelay);
+            }
+        }
+
+        // DayZ-style infected that follow each player around: spawned just out of sight, recycled once left behind.
+        private sealed class AmbientGroup : Group
+        {
+            public readonly BasePlayer Owner;
+
+            private readonly RZombiesReworked _plugin;
+            private float _nextRefill;
+
+            public AmbientGroup(RZombiesReworked plugin, BasePlayer owner)
+            {
+                _plugin = plugin;
+                Owner = owner;
+            }
+
+            private AmbientConfig Cfg => _plugin._cfg.Ambient;
+            private int Target => _plugin._isNight ? Cfg.PerPlayerNight : Cfg.PerPlayerDay;
+
+            public override string Label => Owner != null ? Owner.displayName : "?";
+            public override ZombieProfile Profile => _plugin._ambientProfile;
+            public override bool WantsMore =>
+                Owner != null && Owner.IsConnected && !Owner.IsDead() && Members.Count < Target;
+
+            public void Evaluate()
+            {
+                if (Time.realtimeSinceStartup >= _nextRefill && _plugin.IsEligible(Owner))
+                    _plugin.Enqueue(this, Target - Members.Count - Queued);
+            }
+
+            public void Clear()
+            {
+                _plugin.RetireAll(this);
+                _nextRefill = Time.realtimeSinceStartup + Cfg.RespawnDelay;
+            }
+
+            public override bool TryPickSpot(out Vector3 spot) =>
+                _plugin.TryFindSpotAround(Owner.transform.position, Cfg.MinDistance, Cfg.MaxDistance, true, out spot);
 
             public override void OnLost(Zombie zombie, bool killed)
             {
@@ -511,18 +588,24 @@ namespace Oxide.Plugins
             var candidates = Pool.Get<List<BasePlayer>>();
             foreach (BasePlayer player in BasePlayer.activePlayerList)
             {
-                if (player == null || player.IsDead() || player.IsSleeping() || player.IsFlying || player.InSafeZone())
-                    continue;
-                if (permission.UserHasPermission(player.UserIDString, PermImmune))
-                    continue;
-                if (Vanish != null && Vanish.Call("IsInvisible", player) is true)
-                    continue;
-                candidates.Add(player);
+                if (IsEligible(player))
+                    candidates.Add(player);
             }
 
             chosen = candidates.Count == 0 ? null : candidates[Random.Range(0, candidates.Count)];
             Pool.FreeUnmanaged(ref candidates);
             return chosen != null;
+        }
+
+        // Players zombies can be spawned around or activate monuments: alive, awake, not noclipping,
+        // not in a safe zone, not immune and not vanished.
+        private bool IsEligible(BasePlayer player)
+        {
+            if (player == null || !player.IsConnected || player.IsDead() || player.IsSleeping() || player.IsFlying || player.InSafeZone())
+                return false;
+            if (permission.UserHasPermission(player.UserIDString, PermImmune))
+                return false;
+            return !(Vanish != null && Vanish.Call("IsInvisible", player) is true);
         }
 
         private bool TryFindSpotAround(Vector3 center, float minDistance, float maxDistance, bool avoidBuildings, out Vector3 spot)
@@ -594,10 +677,44 @@ namespace Oxide.Plugins
                 return;
 
             DateTime now = TOD_Sky.Instance.Cycle.DateTime;
+            float hour = (float)now.TimeOfDay.TotalHours;
+            float nightStart = _cfg.Ambient.NightStarts, nightEnd = _cfg.Ambient.NightEnds;
+            _isNight = nightStart > nightEnd ? hour >= nightStart || hour < nightEnd : hour >= nightStart && hour < nightEnd;
+
             foreach (Horde horde in _hordes)
                 horde.Evaluate(now);
+
+            var players = Pool.Get<List<BasePlayer>>();
+            foreach (BasePlayer player in BasePlayer.activePlayerList)
+            {
+                if (IsEligible(player))
+                    players.Add(player);
+            }
+
             foreach (OutbreakSite site in _sites)
-                site.Evaluate();
+                site.Evaluate(players);
+
+            if (_cfg.Ambient.Enabled)
+            {
+                foreach (BasePlayer player in BasePlayer.activePlayerList)
+                {
+                    if (player != null && ((ulong)player.userID).IsSteamId() && !_ambient.ContainsKey(player.userID))
+                        _ambient[player.userID] = new AmbientGroup(this, player);
+                }
+                foreach (AmbientGroup group in _ambient.Values)
+                    group.Evaluate();
+            }
+
+            Pool.FreeUnmanaged(ref players);
+        }
+
+        private void OnPlayerDisconnected(BasePlayer player, string reason)
+        {
+            AmbientGroup group;
+            if (player == null || !_ambient.TryGetValue(player.userID, out group))
+                return;
+            RetireAll(group);
+            _ambient.Remove(player.userID);
         }
 
         private void Watchdog()
@@ -607,6 +724,7 @@ namespace Oxide.Plugins
 
             float drownAfter = _cfg.Cleanup.UnderwaterSeconds;
             float leash = _cfg.Outbreaks.LeashDistance;
+            float recycle = _cfg.Ambient.RecycleDistance;
             var lost = Pool.Get<List<Zombie>>();
 
             foreach (Zombie zombie in _alive.Values)
@@ -639,6 +757,14 @@ namespace Oxide.Plugins
 
                 var site = zombie.Group as OutbreakSite;
                 if (site != null && leash > 0f && (position - site.Center).sqrMagnitude > leash * leash)
+                {
+                    lost.Add(zombie);
+                    continue;
+                }
+
+                var ambient = zombie.Group as AmbientGroup;
+                if (ambient != null && (ambient.Owner == null || ambient.Owner.IsDead()
+                    || (position - ambient.Owner.transform.position).sqrMagnitude > recycle * recycle))
                     lost.Add(zombie);
             }
 
@@ -815,7 +941,9 @@ namespace Oxide.Plugins
                         horde.Leave();
                     foreach (OutbreakSite site in _sites)
                         site.Clear();
-                    Reply(caller, "Cleared", _cfg.Outbreaks.RespawnDelay);
+                    foreach (AmbientGroup group in _ambient.Values)
+                        group.Clear();
+                    Reply(caller, "Cleared", Mathf.Min(_cfg.Ambient.RespawnDelay, _cfg.Outbreaks.RespawnDelay));
                     return;
 
                 default:
@@ -848,10 +976,20 @@ namespace Oxide.Plugins
                     horde.Cfg.RisesAt.ToString("0.0"), horde.Cfg.LeavesAt.ToString("0.0"), last));
             }
 
-            int outbreakZombies = 0;
+            int ambientZombies = 0;
+            foreach (AmbientGroup group in _ambient.Values)
+                ambientZombies += group.Members.Count;
+            sb.AppendLine(Msg("StatusAmbient", caller, _ambient.Count, ambientZombies, _isNight ? "night" : "day",
+                _isNight ? _cfg.Ambient.PerPlayerNight : _cfg.Ambient.PerPlayerDay));
+
+            int outbreakZombies = 0, activeSites = 0;
             foreach (OutbreakSite site in _sites)
+            {
                 outbreakZombies += site.Members.Count;
-            sb.Append(Msg("StatusOutbreaks", caller, _sites.Count, outbreakZombies));
+                if (site.Active)
+                    activeSites++;
+            }
+            sb.Append(Msg("StatusOutbreaks", caller, _sites.Count, activeSites, outbreakZombies));
             return sb.ToString();
         }
 
@@ -973,13 +1111,13 @@ namespace Oxide.Plugins
             public float LeavesAt = 6.5f;
 
             [JsonProperty("Chance to rise each night (%)")]
-            public float ChancePercent = 100f;
+            public float ChancePercent = 35f;
 
             [JsonProperty("Nights to skip between rises")]
             public int NightsBetween = 0;
 
             [JsonProperty("Zombie count")]
-            public int Count = 120;
+            public int Count = 40;
 
             [JsonProperty("Replace killed zombies")]
             public bool ReplaceKilled = true;
@@ -1001,6 +1139,39 @@ namespace Oxide.Plugins
             public float MaxDistance = 70f;
         }
 
+        private sealed class AmbientConfig
+        {
+            [JsonProperty("Enabled")]
+            public bool Enabled = true;
+
+            [JsonProperty("Profile")]
+            public string Profile = "walker";
+
+            [JsonProperty("Zombies around each player (day)")]
+            public int PerPlayerDay = 10;
+
+            [JsonProperty("Zombies around each player (night)")]
+            public int PerPlayerNight = 20;
+
+            [JsonProperty("Night starts (hour 0-24)")]
+            public float NightStarts = 19.5f;
+
+            [JsonProperty("Night ends (hour 0-24)")]
+            public float NightEnds = 6.5f;
+
+            [JsonProperty("Min spawn distance from player")]
+            public float MinDistance = 40f;
+
+            [JsonProperty("Max spawn distance from player")]
+            public float MaxDistance = 100f;
+
+            [JsonProperty("Recycle zombies further than this from their player")]
+            public float RecycleDistance = 160f;
+
+            [JsonProperty("Respawn delay after kill (seconds)")]
+            public float RespawnDelay = 30f;
+        }
+
         private sealed class OutbreakConfig
         {
             [JsonProperty("Enabled")]
@@ -1010,10 +1181,16 @@ namespace Oxide.Plugins
             public string Profile = "brute";
 
             [JsonProperty("Zombies per monument")]
-            public int PerMonument = 6;
+            public int PerMonument = 12;
 
             [JsonProperty("Spawn radius")]
-            public float SpawnRadius = 35f;
+            public float SpawnRadius = 45f;
+
+            [JsonProperty("Only active when a player is within (0 = always)")]
+            public float ActivationRange = 300f;
+
+            [JsonProperty("Empty out after nobody is near for (seconds)")]
+            public float EmptyGrace = 90f;
 
             [JsonProperty("Leash distance (0 = off)")]
             public float LeashDistance = 120f;
@@ -1071,10 +1248,10 @@ namespace Oxide.Plugins
         private sealed class PerformanceConfig
         {
             [JsonProperty("Spawns per second")]
-            public float SpawnsPerSecond = 15f;
+            public float SpawnsPerSecond = 10f;
 
             [JsonProperty("Max zombies on the server")]
-            public int MaxZombies = 600;
+            public int MaxZombies = 300;
 
             [JsonProperty("Keep spawns this far from bases (0 = off)")]
             public float BuildingClearance = 15f;
@@ -1093,6 +1270,9 @@ namespace Oxide.Plugins
         {
             [JsonProperty("Zombie profiles", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public Dictionary<string, ZombieProfile> Profiles = new Dictionary<string, ZombieProfile>(StringComparer.OrdinalIgnoreCase);
+
+            [JsonProperty("Roaming zombies (per player)")]
+            public AmbientConfig Ambient = new AmbientConfig();
 
             [JsonProperty("Hordes", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<HordeConfig> Hordes = new List<HordeConfig>();
@@ -1134,6 +1314,7 @@ namespace Oxide.Plugins
                     : new Dictionary<string, ZombieProfile>(Profiles, StringComparer.OrdinalIgnoreCase);
                 Hordes = Hordes ?? new List<HordeConfig>();
                 Hordes.RemoveAll(h => h == null);
+                Ambient = Ambient ?? new AmbientConfig();
                 Outbreaks = Outbreaks ?? new OutbreakConfig();
                 Targeting = Targeting ?? new TargetingConfig();
                 Corpses = Corpses ?? new CorpseConfig();
@@ -1161,6 +1342,10 @@ namespace Oxide.Plugins
                 Targeting.NeverTarget = Targeting.NeverTarget ?? new List<string>();
                 Performance.SpawnsPerSecond = Mathf.Max(1f, Performance.SpawnsPerSecond);
                 ManualRiseMinutes = Mathf.Max(1f, ManualRiseMinutes);
+                Ambient.PerPlayerDay = Mathf.Max(0, Ambient.PerPlayerDay);
+                Ambient.PerPlayerNight = Mathf.Max(0, Ambient.PerPlayerNight);
+                Ambient.MaxDistance = Mathf.Max(Ambient.MinDistance + 5f, Ambient.MaxDistance);
+                Ambient.RecycleDistance = Mathf.Max(Ambient.MaxDistance + 20f, Ambient.RecycleDistance);
             }
         }
 
@@ -1195,7 +1380,7 @@ namespace Oxide.Plugins
             lang.RegisterMessages(new Dictionary<string, string>
             {
                 ["Prefix"] = "<color=#8fbf3f>[RZombies]</color> ",
-                ["HordeRises"] = "The {0} horde is rising - {1} zombies are out there.",
+                ["HordeRises"] = "A horde is rising tonight ({0}) - {1} more of them are out there.",
                 ["HordeLeaves"] = "The {0} horde has retreated.",
                 ["NoPermission"] = "You don't have permission to use this command.",
                 ["NoSuchHorde"] = "No horde called '{0}'. Hordes: {1}",
@@ -1205,7 +1390,8 @@ namespace Oxide.Plugins
                 ["Help"] = "Usage: rz status | rz start [horde|all] | rz stop [horde|all] | rz clear",
                 ["StatusHeader"] = "Time {0} | {1}/{2} zombies alive | {3} queued",
                 ["StatusHorde"] = "  {0}: {1}, {2}/{3}, window {4}-{5}, last rose {6}",
-                ["StatusOutbreaks"] = "  Outbreaks: {0} monuments, {1} zombies"
+                ["StatusAmbient"] = "  Roaming: {0} players, {1} zombies ({2}, {3} per player)",
+                ["StatusOutbreaks"] = "  Outbreaks: {0} monuments ({1} active), {2} zombies"
             }, this);
         }
 
