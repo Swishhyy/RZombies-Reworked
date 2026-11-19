@@ -1,169 +1,122 @@
 # RZombies Reworked
 
-An Oxide/uMod plugin for Rust that spawns scarecrow "zombies" in waves at in-game times you choose, and keeps a small population of persistent zombies at monuments.
+Zombie hordes for Rust servers running Oxide/uMod. Hordes rise at night on a schedule you control, and outbreaks keep a few tougher zombies at monuments around the clock. The zombies are Rust's scarecrow NPC.
 
-By Swishhyy. Drop `RZombiesReworked.cs` into `oxide/plugins`. The [Kits](https://umod.org/plugins/kits) plugin is **optional**. It's only needed if you want custom zombie loadouts.
+**Install:** drop `RZombiesReworked.cs` into `oxide/plugins`. The config is created at `oxide/config/RZombiesReworked.json`.
+
+**Optional plugins:** [Kits](https://umod.org/plugins/kits) for custom loadouts and [Vanish](https://umod.org/plugins/vanish), so vanished admins never get a horde spawned on them.
 
 ## Features
-* **Multiple spawn waves.** Each wave has its own in-game spawn and despawn time, population, health, name, kits, spawn chance and "days between spawns". Windows can cross midnight (`19.8 -> 7.3`) or fall within one day (`6.0 -> 8.0`).
-* **Spawn near players or across the map.** Near-player spawns pick a random eligible player (not dead, sleeping, flying, in a safe zone, vanished or ignored) and place zombies in a ring between the min and max distance.
-* **Monument zombies.** A persistent group at each matching monument. They respawn if killed and are pulled back if they roam too far.
-* **Gradual spawn and despawn.** Zombies spawn and despawn a few at a time, so the server doesn't hitch.
-* **Water cleanup.** Zombies that stay fully underwater for too long are removed.
-* **Targeting rules.** Zombies can ignore sleepers, human NPCs (e.g. HumanNPC bots), specific prefabs and players with `rzombiesreworked.ignore`.
-* **Corpse and loot control.** Corpses show the zombie's name, and you can choose whether corpses and loot are left behind. Zombie backpacks can despawn twice as fast.
-* **Sentry and grenade toggles.** Choose whether outpost sentries shoot zombies and whether zombies throw grenades.
-* **Spawn broadcast.** Optionally post a chat message when a wave spawns.
-* **Never saved.** Zombies aren't written to the save, so a crash or restart never leaves orphaned NPCs.
+- **Zombie profiles:** reusable zombie types (name, health, damage multiplier, grenades on or off, kits). Hordes and outbreaks just name the profile they use.
+- **Scheduled hordes:** each horde has its own in-game rise and leave hours (windows can cross midnight), a chance to rise each night, a number of nights to skip between rises, a zombie count, and optional replacement of killed zombies after a delay.
+- **Two placement modes:** around a random eligible player, or anywhere on the map. Spawns avoid water, rocks, objects and (by default) anything within 15 m of a base.
+- **Monument outbreaks:** a few zombies at every matching monument. Killed ones come back after a delay, and any that wander past the leash distance are replaced.
+- **Survives reloads:** if the plugin reloads mid-night, a horde that already rose that night comes straight back without re-rolling its chance.
+- **Gentle on the server:** spawns and despawns go through a queue at a configurable rate, with a hard cap on total zombies. Zombies are never written to the save, so a crash never leaves orphaned NPCs.
+- **Targeting rules:** leave sleepers alone, ignore HumanNPC-style bots, never target listed prefabs, and never target players with the immune permission.
+- **Corpse control:** corpses carry the zombie's name and can be removed or have their loot turned off. Zombie backpack lifetime can be scaled.
+- **Cleanup:** zombies stuck underwater are removed.
+- **Chat announcements** when a horde rises or leaves (translatable through Oxide's lang files).
 
 ## Permissions
-* `rzombiesreworked.admin`: use `forcespawn`, `despawnall` and `nzstatus`.
-* `rzombiesreworked.ignore`: zombies won't target this player, and waves won't spawn around them.
+| Permission | Effect |
+|---|---|
+| `rzombiesreworked.admin` | Use the `rz` command. |
+| `rzombiesreworked.immune` | Zombies won't target you, and hordes never spawn around you. |
 
-## Commands
-All commands work in chat (`/forcespawn`) and in the server/RCON console (`forcespawn`).
+## Command
+Works in chat (`/rz ...`) and in the server or RCON console (`rz ...`).
 
-* `forcespawn [wave name]`: spawns every wave, or just the named one, right now. Forced zombies despawn after 10 minutes unless that wave's normal window starts in the meantime.
-* `despawnall`: removes every zombie right away. Monument zombies come back on the next respawn check.
-* `nzstatus`: shows the in-game time, each wave's state and zombie count, days since it last spawned, and monument totals.
+| Command | What it does |
+|---|---|
+| `rz status` | Current in-game time, zombie count and queue, plus each horde's state and outbreak totals. |
+| `rz start [horde\|all]` | Raise a horde now for the manual rise length (default 10 minutes). |
+| `rz stop [horde\|all]` | Send a horde away. |
+| `rz clear` | Remove every zombie. Outbreaks return after their respawn delay. |
 
 ## Configuration
-
-### Spawn Waves (one entry per wave)
-| Key | Description |
-|---|---|
-| Wave Name | Unique name. Used by `forcespawn <name>` and for saving the day counter. |
-| Spawn Time / Destroy Time | In-game hours (0–24) when the wave appears and disappears. |
-| Spawn near players | `true`: spawn around a random player. `false`: random map positions. |
-| Min pop for near player spawn | Online players needed before near-player spawning is used. |
-| Min / Max distance from player | Ring around the player that zombies spawn in. |
-| Respawn killed zombies while wave is active | Replace zombies that are killed so the population stays full. |
-| Zombie Settings | `Display Name`, `Scarecrow Health`, `Scarecrow Kits` (a random one is picked), `Scarecrow Population (total amount)`. |
-| Chance Settings | `Chance per cycle`: rolled **once** each time the window opens. `Days between spawns`: `0` = every night, `1` = every other night, and so on. |
-
-### Monument Settings
-| Key | Description |
-|---|---|
-| Monument Zombie Population | Zombies kept at **each** matching monument. `0` turns this off. |
-| Spawn radius around monument | How far from the monument centre zombies can spawn. |
-| Max roam distance before respawning at monument | Zombies further away than this get respawned at their monument. `0` = off. |
-| Respawn check interval (seconds) | How often dead or stray monument zombies are replaced. |
-| Monument List | Words matched against monument prefab names. Case, spaces, underscores and numbers are ignored, so `military_tunnel` matches `military_tunnel_1.prefab`. |
-| Zombie Settings | `Display Name`, `Scarecrow Health`, `Scarecrow Kits`. |
-
-The default monument list leaves out safe zones (Outpost, Bandit Camp) and offshore monuments (oil rigs).
-
-### Destroy Settings
-* **Leave Corpse, when destroyed**: leave a corpse when a wave ends and its zombies are despawned.
-* **Leave Corpse, when killed by player**: leave a corpse when a zombie is killed.
-* **Spawn Loot**: whether zombie corpses get loot.
-* **Half bodybag despawn time**: zombie backpacks despawn twice as fast.
-
-### Behaviour Settings
-* **Attack sleeping players**
-* **Zombies attacked by outpost sentries**
-* **Throw Grenades**
-* **Ignore Human NPCs**: ignore non-Steam BasePlayers such as HumanNPC bots (scientists are still attacked).
-* **Despawn after fully submerged for (seconds, 0 = off)**, and **Water depth counted as fully submerged**
-* **Ignored entities (full entity shortname)**: e.g. `scarecrow`, `scientistjunkpile`. A `.prefab` suffix is optional.
-
-### Broadcast Settings
-* **Broadcast spawn amount**: post a chat message when a wave spawns.
-
-### Example
 ```json
 {
-  "Config Version": "6.0.0",
-  "Spawn Waves": [
-    {
-      "Wave Name": "Night Wave",
-      "Spawn Time": 19.8,
-      "Destroy Time": 7.3,
-      "Spawn near players": true,
-      "Min pop for near player spawn": 10,
-      "Min distance from player": 30.0,
-      "Max distance from player": 60.0,
-      "Respawn killed zombies while wave is active": true,
-      "Zombie Settings": {
-        "Display Name": "Scarecrow",
-        "Scarecrow Health": 200.0,
-        "Scarecrow Kits": [],
-        "Scarecrow Population (total amount)": 50
-      },
-      "Chance Settings": {
-        "Chance per cycle": 100.0,
-        "Days between spawns": 0
-      }
+  "Zombie profiles": {
+    "walker": {
+      "Name shown": "Walker",
+      "Health": 150.0,
+      "Damage multiplier": 1.0,
+      "Can throw grenades": true,
+      "Kits (one picked at random, needs the Kits plugin)": [],
+      "Kit replaces default gear": false
     },
+    "brute": {
+      "Name shown": "Brute",
+      "Health": 400.0,
+      "Damage multiplier": 1.5,
+      "Can throw grenades": false,
+      "Kits (one picked at random, needs the Kits plugin)": [],
+      "Kit replaces default gear": false
+    }
+  },
+  "Hordes": [
     {
-      "Wave Name": "Dawn Wave",
-      "Spawn Time": 6.0,
-      "Destroy Time": 8.0,
-      "Spawn near players": false,
-      "Min pop for near player spawn": 0,
-      "Min distance from player": 40.0,
-      "Max distance from player": 80.0,
-      "Respawn killed zombies while wave is active": false,
-      "Zombie Settings": {
-        "Display Name": "Dawn Scarecrow",
-        "Scarecrow Health": 150.0,
-        "Scarecrow Kits": [ "dawnkit" ],
-        "Scarecrow Population (total amount)": 30
-      },
-      "Chance Settings": {
-        "Chance per cycle": 50.0,
-        "Days between spawns": 1
-      }
+      "Name": "Nightfall",
+      "Enabled": true,
+      "Profile": "walker",
+      "Rises at (hour 0-24)": 20.0,
+      "Leaves at (hour 0-24)": 6.5,
+      "Chance to rise each night (%)": 100.0,
+      "Nights to skip between rises": 0,
+      "Zombie count": 40,
+      "Replace killed zombies": true,
+      "Replacement delay (seconds)": 20.0,
+      "Placement (NearPlayers or Anywhere)": "NearPlayers",
+      "Players online needed for NearPlayers": 5,
+      "Min distance from player": 35.0,
+      "Max distance from player": 80.0
     }
   ],
-  "Monument Settings": {
-    "Monument Zombie Population": 3,
-    "Spawn radius around monument": 40.0,
-    "Max roam distance before respawning at monument (0 = off)": 150.0,
-    "Respawn check interval (seconds)": 60.0,
-    "Monument List": [
-      "airfield", "powerplant", "trainyard", "military_tunnel", "water_treatment",
-      "launch_site", "junkyard", "satellite_dish", "sphere_tank", "harbor",
-      "radtown", "excavator", "gas_station", "supermarket", "warehouse"
-    ],
-    "Zombie Settings": {
-      "Display Name": "Monument Zombie",
-      "Scarecrow Health": 300.0,
-      "Scarecrow Kits": []
-    }
+  "Monument outbreaks": {
+    "Enabled": true,
+    "Profile": "brute",
+    "Zombies per monument": 2,
+    "Spawn radius": 35.0,
+    "Leash distance (0 = off)": 120.0,
+    "Respawn delay after kill (seconds)": 180.0,
+    "Monuments (prefab name contains)": [
+      "airfield", "power_plant", "powerplant", "trainyard", "military_tunnel", "water_treatment",
+      "launch_site", "junkyard", "satellite_dish", "sphere_tank", "harbor", "radtown", "excavator"
+    ]
   },
-  "Destroy Settings": {
-    "Leave Corpse, when destroyed": false,
-    "Leave Corpse, when killed by player": true,
-    "Spawn Loot": true,
-    "Half bodybag despawn time": true
-  },
-  "Behaviour Settings": {
+  "Targeting": {
     "Attack sleeping players": false,
-    "Zombies attacked by outpost sentries": true,
-    "Throw Grenades": true,
-    "Ignore Human NPCs": true,
-    "Despawn after fully submerged for (seconds, 0 = off)": 10.0,
-    "Water depth counted as fully submerged": 1.8,
-    "Ignored entities (full entity shortname)": [ "scientistjunkpile", "scarecrow" ]
+    "Attack non-Steam bot players": false,
+    "Outpost sentries shoot zombies": true,
+    "Never target (prefab short names)": [ "scarecrow", "scientistjunkpile" ]
   },
-  "Broadcast Settings": {
-    "Broadcast spawn amount": false
-  }
+  "Corpses": {
+    "Leave corpses": true,
+    "Corpses drop loot": true,
+    "Backpack lifetime multiplier": 0.5,
+    "Death effect prefab (empty = none)": "assets/prefabs/npc/murderer/sound/death.prefab"
+  },
+  "Cleanup": {
+    "Remove zombies underwater for (seconds, 0 = off)": 10.0,
+    "Water depth that counts as underwater": 1.6
+  },
+  "Performance": {
+    "Spawns per second": 10.0,
+    "Max zombies on the server": 300,
+    "Keep spawns this far from bases (0 = off)": 15.0
+  },
+  "Chat": {
+    "Announce when a horde rises": true,
+    "Announce when a horde leaves": false
+  },
+  "Manual rise length (minutes)": 10.0
 }
 ```
 
-## Upgrading from Night Zombies (5.x)
-This plugin used to be called **Night Zombies**. To switch over:
-1. Remove `NightZombies.cs` from `oxide/plugins` and add `RZombiesReworked.cs`.
-2. Your existing `oxide/config/NightZombies.json` is copied to `RZombiesReworked.json` the first time the plugin loads.
-3. **Permissions have new names.** Grant them again:
-   * `nightzombies.admin` -> `rzombiesreworked.admin`
-   * `nightzombies.ignore` -> `rzombiesreworked.ignore`
-
-On that first load the plugin also:
-* renames the misspelt `Days betewen spawn` key to `Days between spawns` and keeps your value,
-* resets **Monument List** to names that actually match Rust monuments (the old names never matched, so monument zombies were spawning near the map centre),
-* adds the new keys with their defaults.
-
-Day counters are now saved in `oxide/data/RZombiesReworked.json`. The old `NightZombies-daysSinceSpawn.json` and `NightZombies.json` files can be deleted.
+### Notes
+- **Nights to skip between rises:** `0` means every night, `1` every other night, and so on.
+- **Placement fallback:** NearPlayers falls back to Anywhere when not enough players are online or no spot near a player is found.
+- **Monument matching:** each monument's prefab file name is checked for any of the words in the list, e.g. `military_tunnel` matches `military_tunnel_1.prefab`. Safe zones (Outpost, Bandit Camp) and oil rigs are left out of the default list on purpose.
+- **Adding more hordes:** add another object to `Hordes` with a unique `Name`.
+- **Horde history** (last roll and last rise) is stored in `oxide/data/RZombiesReworked.json`.
