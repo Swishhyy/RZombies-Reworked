@@ -40,7 +40,7 @@ Works in chat (`/rz ...`) and in the server or RCON console (`rz ...`).
   "Zombie profiles": {
     "walker": {
       "Name shown": "Walker",
-      "Health": 150.0,
+      "Health": 75.0,
       "Damage multiplier": 1.0,
       "Can throw grenades": true,
       "Kits (one picked at random, needs the Kits plugin)": [],
@@ -48,8 +48,8 @@ Works in chat (`/rz ...`) and in the server or RCON console (`rz ...`).
     },
     "brute": {
       "Name shown": "Brute",
-      "Health": 400.0,
-      "Damage multiplier": 1.5,
+      "Health": 150.0,
+      "Damage multiplier": 1.25,
       "Can throw grenades": false,
       "Kits (one picked at random, needs the Kits plugin)": [],
       "Kit replaces default gear": false
@@ -64,22 +64,22 @@ Works in chat (`/rz ...`) and in the server or RCON console (`rz ...`).
       "Leaves at (hour 0-24)": 6.5,
       "Chance to rise each night (%)": 100.0,
       "Nights to skip between rises": 0,
-      "Zombie count": 40,
+      "Zombie count": 120,
       "Replace killed zombies": true,
-      "Replacement delay (seconds)": 20.0,
+      "Replacement delay (seconds)": 10.0,
       "Placement (NearPlayers or Anywhere)": "NearPlayers",
-      "Players online needed for NearPlayers": 5,
-      "Min distance from player": 35.0,
-      "Max distance from player": 80.0
+      "Players online needed for NearPlayers": 1,
+      "Min distance from player": 30.0,
+      "Max distance from player": 70.0
     }
   ],
   "Monument outbreaks": {
     "Enabled": true,
     "Profile": "brute",
-    "Zombies per monument": 2,
+    "Zombies per monument": 6,
     "Spawn radius": 35.0,
     "Leash distance (0 = off)": 120.0,
-    "Respawn delay after kill (seconds)": 180.0,
+    "Respawn delay after kill (seconds)": 90.0,
     "Monuments (prefab name contains)": [
       "airfield", "power_plant", "powerplant", "trainyard", "military_tunnel", "water_treatment",
       "launch_site", "junkyard", "satellite_dish", "sphere_tank", "harbor", "radtown", "excavator"
@@ -102,8 +102,8 @@ Works in chat (`/rz ...`) and in the server or RCON console (`rz ...`).
     "Water depth that counts as underwater": 1.6
   },
   "Performance": {
-    "Spawns per second": 10.0,
-    "Max zombies on the server": 300,
+    "Spawns per second": 15.0,
+    "Max zombies on the server": 600,
     "Keep spawns this far from bases (0 = off)": 15.0
   },
   "Chat": {

@@ -13,7 +13,7 @@ using Random = UnityEngine.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("RZombies Reworked", "Swishhyy", "1.0.0")]
+    [Info("RZombies Reworked", "Swishhyy", "1.1.0")]
     [Description("Scheduled zombie hordes and monument outbreaks, built on Rust's scarecrow NPC")]
     public class RZombiesReworked : RustPlugin
     {
@@ -940,7 +940,7 @@ namespace Oxide.Plugins
             public string Name = "Zombie";
 
             [JsonProperty("Health")]
-            public float Health = 150f;
+            public float Health = 75f;
 
             [JsonProperty("Damage multiplier")]
             public float DamageMultiplier = 1f;
@@ -979,26 +979,26 @@ namespace Oxide.Plugins
             public int NightsBetween = 0;
 
             [JsonProperty("Zombie count")]
-            public int Count = 40;
+            public int Count = 120;
 
             [JsonProperty("Replace killed zombies")]
             public bool ReplaceKilled = true;
 
             [JsonProperty("Replacement delay (seconds)")]
-            public float ReplacementDelay = 20f;
+            public float ReplacementDelay = 10f;
 
             [JsonProperty("Placement (NearPlayers or Anywhere)")]
             [JsonConverter(typeof(StringEnumConverter))]
             public Placement Placement = Placement.NearPlayers;
 
             [JsonProperty("Players online needed for NearPlayers")]
-            public int MinOnlineForNearPlayers = 5;
+            public int MinOnlineForNearPlayers = 1;
 
             [JsonProperty("Min distance from player")]
-            public float MinDistance = 35f;
+            public float MinDistance = 30f;
 
             [JsonProperty("Max distance from player")]
-            public float MaxDistance = 80f;
+            public float MaxDistance = 70f;
         }
 
         private sealed class OutbreakConfig
@@ -1010,7 +1010,7 @@ namespace Oxide.Plugins
             public string Profile = "brute";
 
             [JsonProperty("Zombies per monument")]
-            public int PerMonument = 2;
+            public int PerMonument = 6;
 
             [JsonProperty("Spawn radius")]
             public float SpawnRadius = 35f;
@@ -1019,7 +1019,7 @@ namespace Oxide.Plugins
             public float LeashDistance = 120f;
 
             [JsonProperty("Respawn delay after kill (seconds)")]
-            public float RespawnDelay = 180f;
+            public float RespawnDelay = 90f;
 
             [JsonProperty("Monuments (prefab name contains)", ObjectCreationHandling = ObjectCreationHandling.Replace)]
             public List<string> Monuments = new List<string>
@@ -1071,10 +1071,10 @@ namespace Oxide.Plugins
         private sealed class PerformanceConfig
         {
             [JsonProperty("Spawns per second")]
-            public float SpawnsPerSecond = 10f;
+            public float SpawnsPerSecond = 15f;
 
             [JsonProperty("Max zombies on the server")]
-            public int MaxZombies = 300;
+            public int MaxZombies = 600;
 
             [JsonProperty("Keep spawns this far from bases (0 = off)")]
             public float BuildingClearance = 15f;
@@ -1121,8 +1121,8 @@ namespace Oxide.Plugins
             public static PluginConfig CreateDefault()
             {
                 var cfg = new PluginConfig();
-                cfg.Profiles["walker"] = new ZombieProfile { Name = "Walker", Health = 150f };
-                cfg.Profiles["brute"] = new ZombieProfile { Name = "Brute", Health = 400f, DamageMultiplier = 1.5f, CanThrowGrenades = false };
+                cfg.Profiles["walker"] = new ZombieProfile { Name = "Walker", Health = 75f };
+                cfg.Profiles["brute"] = new ZombieProfile { Name = "Brute", Health = 150f, DamageMultiplier = 1.25f, CanThrowGrenades = false };
                 cfg.Hordes.Add(new HordeConfig());
                 return cfg;
             }
