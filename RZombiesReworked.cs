@@ -13,7 +13,7 @@ using Random = UnityEngine.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("RZombies Reworked", "Swishhyy", "1.4.0")]
+    [Info("RZombies Reworked", "Swishhyy", "1.4.1")]
     [Description("Scheduled zombie hordes and monument outbreaks, built on Rust's scarecrow NPC")]
     public class RZombiesReworked : RustPlugin
     {
@@ -596,7 +596,6 @@ namespace Oxide.Plugins
             light.transform.localPosition = HeadLightOffset;
             light.transform.localRotation = Quaternion.identity;
             light.Spawn();
-            light.SetFlag(BaseEntity.Flags.On, true);
             zombie.HeadLight = light; // parented, so it's removed together with the zombie
         }
 
