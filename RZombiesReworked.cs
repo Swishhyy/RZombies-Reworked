@@ -13,7 +13,7 @@ using Random = UnityEngine.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("RZombies Reworked", "Swishhyy", "1.6.0")]
+    [Info("RZombies Reworked", "Swishhyy", "1.6.1")]
     [Description("Scheduled zombie hordes and monument outbreaks, built on Rust's scarecrow NPC")]
     public class RZombiesReworked : RustPlugin
     {
@@ -1394,7 +1394,7 @@ namespace Oxide.Plugins
             public float BackpackLifetimeMultiplier = 0.5f;
 
             [JsonProperty("Death effect prefab (empty = none)")]
-            public string DeathEffect = "assets/prefabs/npc/murderer/sound/death.prefab";
+            public string DeathEffect = string.Empty;
         }
 
         private sealed class CleanupConfig
@@ -1503,6 +1503,11 @@ namespace Oxide.Plugins
                 Targeting.NeverTarget = Targeting.NeverTarget ?? new List<string>();
                 Performance.SpawnsPerSecond = Mathf.Max(1f, Performance.SpawnsPerSecond);
                 ManualRiseMinutes = Mathf.Max(1f, ManualRiseMinutes);
+
+                // Older defaults pointed at the murderer death sound, which current Rust no longer loads on the server
+                // ("requires asset scene to be loaded first" on every kill).
+                if (Corpses.DeathEffect != null && Corpses.DeathEffect.Contains("npc/murderer/"))
+                    Corpses.DeathEffect = string.Empty;
                 Ambient.PerPlayerDay = Mathf.Max(0, Ambient.PerPlayerDay);
                 Ambient.PerPlayerNight = Mathf.Max(0, Ambient.PerPlayerNight);
                 Ambient.MaxDistance = Mathf.Max(Ambient.MinDistance + 5f, Ambient.MaxDistance);

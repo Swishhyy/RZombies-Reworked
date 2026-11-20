@@ -116,7 +116,7 @@ Works in chat (`/rz ...`) and in the server or RCON console (`rz ...`).
     "Leave corpses": true,
     "Corpses drop loot": true,
     "Backpack lifetime multiplier": 0.5,
-    "Death effect prefab (empty = none)": "assets/prefabs/npc/murderer/sound/death.prefab"
+    "Death effect prefab (empty = none)": ""
   },
   "Cleanup": {
     "Remove zombies underwater for (seconds, 0 = off)": 10.0,
