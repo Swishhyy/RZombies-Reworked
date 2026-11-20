@@ -13,7 +13,7 @@ using Random = UnityEngine.Random;
 
 namespace Oxide.Plugins
 {
-    [Info("RZombies Reworked", "Swishhyy", "1.4.1")]
+    [Info("RZombies Reworked", "Swishhyy", "1.5.0")]
     [Description("Scheduled zombie hordes and monument outbreaks, built on Rust's scarecrow NPC")]
     public class RZombiesReworked : RustPlugin
     {
@@ -25,8 +25,7 @@ namespace Oxide.Plugins
         private const string ScarecrowPath = "assets/prefabs/npc/scarecrow/scarecrow.prefab";
         private const int BeancanItemId = 1840822026;
         private const string GlowEyesShortname = "gloweyes";
-        private const string RedPointLight = "assets/bundled/prefabs/modding/cinematic/cinelights/cinelight_point_red.prefab";
-        private static readonly Vector3 HeadLightOffset = new Vector3(0f, 1.6f, 0.2f);
+        private const string CandleHatShortname = "hat.candle";
 
         private const float QueueTick = 0.2f;     // spawn/despawn queue
         private const float WatchdogTick = 2f;    // water + leash checks
@@ -45,8 +44,8 @@ namespace Oxide.Plugins
             public Group Group;
             public ZombieProfile Profile;
             public float SecondsUnderwater;
-            public BaseEntity HeadLight;
-            public bool HasLight; // rolled once at spawn against the profile's head light chance
+            public bool HasCandle;
+            public bool CandleLit;
         }
 
         private readonly Dictionary<ScarecrowNPC, Zombie> _alive = new Dictionary<ScarecrowNPC, Zombie>();
@@ -60,9 +59,10 @@ namespace Oxide.Plugins
         private bool _isNight;
         private readonly HashSet<string> _neverTarget = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _kitWarnings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        private readonly HashSet<string> _lightWarnings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private ItemDefinition _glowEyes;
+        private ItemDefinition _candleHat;
         private bool _glowEyesWarned;
+        private bool _candleWarned;
 
         private int _obstacleMask;
         private int _buildingMask;
@@ -104,6 +104,10 @@ namespace Oxide.Plugins
             _glowEyes = ItemManager.FindItemDefinition(GlowEyesShortname);
             if (_glowEyes == null)
                 PrintWarning($"Item '{GlowEyesShortname}' wasn't found - the glowing eyes option will do nothing.");
+
+            _candleHat = ItemManager.FindItemDefinition(CandleHatShortname);
+            if (_candleHat == null)
+                PrintWarning($"Item '{CandleHatShortname}' wasn't found - the candle hat option will do nothing.");
 
             foreach (HordeConfig hordeCfg in _cfg.Hordes)
             {
@@ -523,18 +527,15 @@ namespace Oxide.Plugins
             EquipKit(npc, profile);
             if (!profile.CanThrowGrenades)
                 StripItem(npc, BeancanItemId);
+            bool hasCandle = profile.CandleHat && PutOnCandleHat(npc);
             if (profile.GlowingEyes)
                 AddGlowingEyes(npc);
 
             npc.SendNetworkUpdate();
 
-            var zombie = new Zombie
-            {
-                Npc = npc, Group = group, Profile = profile,
-                HasLight = !string.IsNullOrEmpty(profile.HeadLightPrefab) && Random.Range(0f, 100f) < profile.HeadLightChance
-            };
-            if (zombie.HasLight && WantsHeadLight(profile))
-                AttachHeadLight(zombie);
+            var zombie = new Zombie { Npc = npc, Group = group, Profile = profile, HasCandle = hasCandle };
+            if (hasCandle && _isNight)
+                SetCandle(zombie, true);
             _alive[npc] = zombie;
             group.Members.Add(zombie);
         }
@@ -570,55 +571,69 @@ namespace Oxide.Plugins
             {
                 _glowEyesWarned = true;
                 PrintWarning("Couldn't fit Glowing Eyes on a zombie (its headwear blocks that slot). " +
-                             "Try a kit without a full-face mask, or use the head light option instead.");
+                             "Try a kit without a full-face mask.");
             }
         }
 
-        private bool WantsHeadLight(ZombieProfile profile) =>
-            !string.IsNullOrEmpty(profile.HeadLightPrefab) && (_isNight || !profile.HeadLightNightOnly);
-
-        private void AttachHeadLight(Zombie zombie)
+        private bool PutOnCandleHat(ScarecrowNPC npc)
         {
-            if (zombie.HeadLight != null && !zombie.HeadLight.IsDestroyed)
-                return;
+            if (_candleHat == null)
+                return false;
 
-            string prefab = zombie.Profile.HeadLightPrefab;
-            BaseEntity light = GameManager.server.CreateEntity(prefab, zombie.Npc.transform.position);
-            if (light == null)
+            ItemContainer wear = npc.inventory.containerWear;
+            if (wear.FindItemByItemID(_candleHat.itemid) != null)
+                return true;
+
+            Item hat = ItemManager.Create(_candleHat);
+            if (hat.MoveToContainer(wear))
+                return true;
+
+            // Something on the head is in the way (usually the scarecrow's own mask): find it and swap it for the hat.
+            var worn = Pool.Get<List<Item>>();
+            worn.AddRange(wear.itemList);
+            bool fitted = false;
+            foreach (Item item in worn)
             {
-                if (_lightWarnings.Add(prefab))
-                    PrintWarning($"Head light prefab '{prefab}' couldn't be spawned - check the path.");
-                return;
+                int slot = item.position;
+                item.RemoveFromContainer();
+                if (hat.MoveToContainer(wear))
+                {
+                    item.Remove();
+                    fitted = true;
+                    break;
+                }
+                if (!item.MoveToContainer(wear, slot))
+                    item.Remove();
             }
+            Pool.FreeUnmanaged(ref worn);
+            ItemManager.DoRemoves();
 
-            light.EnableSaving(false);
-            light.SetParent(zombie.Npc);
-            light.transform.localPosition = HeadLightOffset;
-            light.transform.localRotation = Quaternion.identity;
-            light.Spawn();
-            zombie.HeadLight = light; // parented, so it's removed together with the zombie
+            if (fitted)
+                return true;
+
+            hat.Remove();
+            if (!_candleWarned)
+            {
+                _candleWarned = true;
+                PrintWarning("Couldn't fit a candle hat on a zombie - its outfit blocks the head slot.");
+            }
+            return false;
         }
 
-        private static void RemoveHeadLight(Zombie zombie)
+        // Uses the same toggle a player gets from their "light" key, which switches worn lights on and off.
+        private static void SetCandle(Zombie zombie, bool lit)
         {
-            if (zombie.HeadLight != null && !zombie.HeadLight.IsDestroyed)
-                zombie.HeadLight.Kill();
-            zombie.HeadLight = null;
+            if (!zombie.HasCandle || zombie.CandleLit == lit || zombie.Npc == null || zombie.Npc.IsDestroyed)
+                return;
+            zombie.Npc.LightToggle();
+            zombie.CandleLit = lit;
         }
 
-        // Head lights marked night-only are added at dusk and removed at dawn.
-        private void RefreshHeadLights()
+        // Candles are lit at dusk and put out at dawn.
+        private void RefreshCandles()
         {
             foreach (Zombie zombie in _alive.Values)
-            {
-                if (zombie.Npc == null || zombie.Npc.IsDestroyed || !zombie.HasLight)
-                    continue;
-
-                if (WantsHeadLight(zombie.Profile))
-                    AttachHeadLight(zombie);
-                else
-                    RemoveHeadLight(zombie);
-            }
+                SetCandle(zombie, _isNight);
         }
 
         private static void StripWorn(ScarecrowNPC npc, int itemId)
@@ -777,7 +792,7 @@ namespace Oxide.Plugins
             bool wasNight = _isNight;
             _isNight = nightStart > nightEnd ? hour >= nightStart || hour < nightEnd : hour >= nightStart && hour < nightEnd;
             if (_isNight != wasNight)
-                RefreshHeadLights();
+                RefreshCandles();
 
             foreach (Horde horde in _hordes)
                 horde.Evaluate(now);
@@ -909,9 +924,11 @@ namespace Oxide.Plugins
 
             Detach(zombie);
 
-            // Don't let the corpse hand out free Glowing Eyes.
+            // Don't let corpses hand out free Glowing Eyes and candle hats.
             if (zombie.Profile.GlowingEyes && _glowEyes != null)
                 StripWorn(npc, _glowEyes.itemid);
+            if (zombie.HasCandle && _candleHat != null)
+                StripWorn(npc, _candleHat.itemid);
 
             if (_fallen.Count >= FallenMemory)
                 _fallen.Clear();
@@ -1197,14 +1214,8 @@ namespace Oxide.Plugins
             [JsonProperty("Glowing eyes (wear the Glowing Eyes item)")]
             public bool GlowingEyes = true;
 
-            [JsonProperty("Head light prefab (empty = off, costs client FPS)")]
-            public string HeadLightPrefab = RedPointLight;
-
-            [JsonProperty("Head light chance per zombie (%)")]
-            public float HeadLightChance = 100f;
-
-            [JsonProperty("Head light only at night")]
-            public bool HeadLightNightOnly = true;
+            [JsonProperty("Candle hat (lit at night)")]
+            public bool CandleHat = true;
         }
 
         private sealed class HordeConfig
